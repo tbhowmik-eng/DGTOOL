@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>HSM Sensitivity Regime Map — Guided Prototype</title>
+
+<style>
+body{font-family:system-ui;background:#f6f7fb;margin:0;color:#111}
+.wrap{max-width:1400px;margin:auto;padding:20px}
+.panel{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-bottom:14px}
+h2{font-size:16px;margin:0 0 10px 0}
+label{font-size:13px;color:#555;display:block;margin-top:10px}
+input,select,textarea{width:100%;padding:8px;border:1px solid #ccc;border-radius:8px}
+textarea{min-height:70px}
+.row{display:flex;gap:12px}
+.row>div{flex:1}
+.small{font-size:12px;color:#555}
+.note{background:#f3f4f6;padding:10px;border-radius:8px;font-size:12px}
+
+.hidden{display:none}
+
+.btn{
+  padding:10px 12px; border-radius:10px; cursor:pointer;
+  border:1px solid #ccc; background:#fff; font-size:13px;
+}
+.btn.primary{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.btn:disabled{opacity:.55; cursor:not-allowed}
+
+.callout{border-left:4px solid #999;padding:12px;background:#fafafa;border-radius:10px;margin-top:10px;font-size:13px}
+.warn{border-color:#b45309}
+.good{border-color:#0f766e}
+
+/* Tabs */
+.tabs{
+  display:flex; gap:10px; flex-wrap:wrap;
+  background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+  padding:10px; margin-bottom:14px;
+}
+.tabbtn{
+  border:1px solid #e5e7eb; background:#fff; padding:10px 12px;
+  border-radius:999px; cursor:pointer; font-size:13px;
+}
+.tabbtn[aria-selected="true"]{
+  border-color: rgba(31,111,235,.45);
+  box-shadow: 0 0 0 3px rgba(31,111,235,.12);
+}
+.tabbtn.locked{opacity:.55; cursor:not-allowed}
+.tabpanel{display:none}
+.tabpanel.active{display:block}
+
+/* Regimes list */
+.regimeList{display:flex;flex-direction:column;gap:12px}
+.regime{border:1px solid #ddd;border-radius:12px;padding:12px;background:#fafafa}
+.regime.active{border-left:6px solid #b45309;background:#fff7ed}
+.regime.inactive{opacity:.65}
+.regime h4{margin:0 0 6px 0;font-size:14px}
+.regime p{margin:4px 0;font-size:12px}
+.trigger{
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+  font-size:12px;background:#eef2ff;padding:4px 6px;border-radius:6px;display:inline-block
+}
+
+/* Side-by-side layout inside Regime section */
+.twoCol{
+  display:grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap:14px;
+  margin-top:12px;
+}
+@media (max-width: 980px){
+  .twoCol{grid-template-columns:1fr}
+}
+.sideCard{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+<!-- Tabs -->
+<div class="tabs" role="tablist" aria-label="Prototype Tabs">
+  <button class="tabbtn" role="tab" id="tab-main" aria-selected="true" data-tab="main">Main</button>
+  <button class="tabbtn locked" role="tab" id="tab-diag" aria-selected="false" data-tab="diag" disabled title="Complete input evaluation first">Diagnostic checks</button>
+</div>
+
+<!-- MAIN TAB -->
+<div class="tabpanel active" id="panel-main" role="tabpanel" aria-labelledby="tab-main">
+
+  <!-- STEP 1 -->
+  <div class="panel">
+    <h2>1) Select comparison context</h2>
+
+    <label>Comparison type</label>
+    <select id="cmp">
+      <option value="">Select…</option>
+      <option value="3st_3sg">Stop-controlled vs Signalized (3ST vs 3SG)</option>
+    </select>
+
+    <label>Decision emphasis</label>
+    <select id="decision">
+      <option value="">Select…</option>
+      <option value="total">Planning-level (Total crashes)</option>
+      <option value="severity">Severity-focused (Fatal & Injury)</option>
+      <option value="mixed">Both Total + Severity</option>
+    </select>
+
+    <div id="trendBox" class="note hidden"></div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="panel hidden" id="regimePanel">
+    <h2>2) Possible sensitivity regimes + your case inputs</h2>
+
+    <div class="callout warn" id="topInstr">
+      These are the possible sensitivity regimes for the selected comparison.
+      <b>To see which regime(s) apply to your case</b>, click
+      <button class="btn primary" id="btnInputs" disabled style="margin-left:8px;">Put your inputs</button>
+    </div>
+
+    <!-- Message after inputs -->
+    <div class="callout good hidden" id="caseMsg"></div>
+
+    <div class="twoCol">
+      <!-- Left: regime list -->
+      <div class="sideCard">
+        <div class="small" style="margin-bottom:8px;">
+          <b>All possible regimes</b> (red-highlighted ones are triggered after you enter inputs)
+        </div>
+        <div id="regimeList" class="regimeList"></div>
+      </div>
+
+      <!-- Right: inputs (hidden until button click) -->
+      <div class="sideCard hidden" id="inputPanel">
+        <h2 style="font-size:14px;margin:0 0 6px 0;">Your inputs</h2>
+        <div class="small">Enter values; regimes will highlight immediately.</div>
+
+        <label>Major-road AADT</label>
+        <input type="number" id="maj" placeholder="e.g., 16000">
+
+        <label>Minor-road AADT</label>
+        <input type="number" id="min" placeholder="e.g., 3200">
+
+        <label>Left-turn lanes on major approaches</label>
+        <select id="lt">
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+
+        <div style="margin-top:10px;" class="small"><b>Calibration factors (enter both if used)</b></div>
+
+        <label>Calibration factor — Alternative A</label>
+        <input type="number" id="calA" step="0.01" placeholder="e.g., 1.05">
+
+        <label>Calibration factor — Alternative B</label>
+        <input type="number" id="calB" step="0.01" placeholder="e.g., 1.20">
+
+        <div class="note" style="margin-top:10px;">
+          Calibration difference regime triggers only if <b>both</b> calibration factors are entered and valid.
+        </div>
+
+        <div class="callout good" style="margin-top:12px;">
+          Next step: open <b>Diagnostic checks</b> to record assumptions, calibration status, local SPF availability, and documentation.
+          <div style="margin-top:8px;">
+            <button class="btn" id="btnDiag" disabled>Open diagnostic checks</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- DIAGNOSTIC TAB -->
+<div class="tabpanel" id="panel-diag" role="tabpanel" aria-labelledby="tab-diag">
+  <div class="panel">
+    <h2>Diagnostic checks (proposal-aligned)</h2>
+    <div class="small">Unlocked after you start the input step on the Main tab.</div>
+
+    <label>Were all key inputs available?</label>
+    <select id="inputsAvail">
+      <option value="yes">Yes — inputs available</option>
+      <option value="partial">Partially — some assumptions/proxies used</option>
+      <option value="no">No — major inputs missing</option>
+    </select>
+
+    <div id="assumpBlock" class="hidden">
+      <label>What was assumed / defaulted / proxied?</label>
+      <textarea id="assumpText" placeholder="Example: turning movement splits defaulted; minor AADT assumed as % of major; geometry inferred."></textarea>
+
+      <label>Primary data limitations</label>
+      <textarea id="dataLimits" placeholder="Example: limited turning movement counts; incomplete geometry inventory; inconsistent severity coding."></textarea>
+    </div>
+
+    <label>Calibration status</label>
+    <select id="calStatus">
+      <option value="current">Current & applicable (consistent across alternatives)</option>
+      <option value="mixed">Available for some alternatives only / inconsistent basis</option>
+      <option value="outdated">Outdated / uncertain applicability</option>
+      <option value="none">Not available / not used</option>
+    </select>
+
+    <div id="calDetailBlock" class="hidden">
+      <label>Calibration details (optional)</label>
+      <textarea id="calDetails" placeholder="Example: FI calibration not available for one alternative; different data periods used; last updated ~2012."></textarea>
+    </div>
+
+    <label>Are local SPFs / hybrid prediction methods available for this context?</label>
+    <select id="localSpfAvail">
+      <option value="unknown">Unknown / not assessed</option>
+      <option value="yes">Yes</option>
+      <option value="no">No</option>
+    </select>
+
+    <div id="localSpfBlock" class="hidden">
+      <label>If yes, notes (what exists / how current / which alternatives covered)</label>
+      <textarea id="localSpfNotes" placeholder="Example: local SPF exists for signalized only; updated 2019; severity-specific available for total but not FI."></textarea>
+    </div>
+
+    <label>Decision metric clarity</label>
+    <select id="metricClarity">
+      <option value="clear">Clear — metric aligns with decision purpose</option>
+      <option value="unclear">Unclear — total vs FI emphasis not resolved</option>
+    </select>
+
+    <label>Documentation feasibility</label>
+    <select id="docFeasible">
+      <option value="yes">Yes — can document inputs, assumptions, limitations</option>
+      <option value="no">No — missing records / burden too high</option>
+    </select>
+
+    <div class="callout good" id="trackSummary" style="margin-top:12px;">
+      Fill fields above to generate a short “what we would track” summary for this case.
+    </div>
+
+    <button class="btn" id="btnBackMain" style="margin-top:12px;">← Back to Main</button>
+  </div>
+</div>
+
+<script>
+// ---------------- Tabs ----------------
+const tabBtns = document.querySelectorAll(".tabbtn");
+function showTab(name){
+  document.querySelectorAll(".tabpanel").forEach(p=>p.classList.remove("active"));
+  document.getElementById(`panel-${name}`).classList.add("active");
+  tabBtns.forEach(b=>b.setAttribute("aria-selected", b.dataset.tab === name ? "true":"false"));
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+tabBtns.forEach(b=>{
+  b.addEventListener("click", ()=>{
+    if(b.disabled) return;
+    showTab(b.dataset.tab);
+  });
+});
+document.getElementById("btnBackMain").addEventListener("click", ()=>showTab("main"));
+
+// ---------------- Trend ----------------
+const trendText = {
+  total: "General expectation: Total-crash planning comparisons are often stable under typical inputs, but can become sensitive under high exposure, geometry complexity, or calibration differences.",
+  severity: "General expectation: Severity-focused decisions can show divergence across alternatives more often, especially as exposure increases or when calibration differs across severity outcomes.",
+  mixed: "General expectation: When both total and FI matter, some contexts remain stable, but sensitivity can emerge when exposure/geometry/calibration conditions align."
+};
+
+// ---------------- Regimes ----------------
+function getRegimesForComparison(cmp){
+  if(cmp !== "3st_3sg") return [];
+  return [
+    { id:"R1", title:"High major-road AADT regime",
+      ruleText:"Major AADT ≥ 15,000",
+      check: d => isFiniteNum(d.maj) && d.maj >= 15000,
+      why:"High major-road exposure can place this comparison in a sensitivity region where comparative behavior is more context-dependent."
+    },
+    { id:"R2", title:"Major–minor interaction regime",
+      ruleText:"Major ≥ 12,000 AND Minor ≥ 2,500",
+      check: d => isFiniteNum(d.maj) && isFiniteNum(d.min) && d.maj >= 12000 && d.min >= 2500,
+      why:"The combination of major and minor volumes can trigger crossover behavior even if neither volume alone is extreme."
+    },
+    { id:"R3", title:"Geometry-amplified regime",
+      ruleText:"Major ≥ 8,000 AND Left-turn lanes = 2",
+      check: d => isFiniteNum(d.maj) && d.maj >= 8000 && d.lt === 2,
+      why:"Control-specific CMFs can interact with turning/geometry assumptions, lowering the threshold for sensitivity."
+    },
+    { id:"R4", title:"Calibration difference regime",
+      ruleText:"Both cal factors entered AND |CalA − CalB| ≥ 0.10",
+      check: d => isFiniteNum(d.calA) && isFiniteNum(d.calB) && Math.abs(d.calA - d.calB) >= 0.10,
+      why:"Different calibration factors across alternatives can shift comparative outcomes and expand sensitivity."
+    },
+    { id:"R5", title:"High calibration expands sensitivity",
+      ruleText:"At least one cal entered AND max(CalA, CalB) ≥ 1.15 AND Major ≥ 9,000 AND Left-turn ≥ 1",
+      check: d => {
+        const maxCal = maxFinite(d.calA, d.calB);
+        return isFiniteNum(d.maj) && d.maj >= 9000 && d.lt >= 1 && isFiniteNum(maxCal) && maxCal >= 1.15;
+      },
+      why:"Higher calibration values can make lower-volume settings behave like higher-volume cases, activating sensitivity earlier."
+    }
+  ];
+}
+
+let currentRegimes = [];
+let inputEnabled = false;
+
+// Elements
+const btnInputs = document.getElementById("btnInputs");
+const btnDiag = document.getElementById("btnDiag");
+const tabDiag = document.getElementById("tab-diag");
+const caseMsg = document.getElementById("caseMsg");
+
+// Context selection
+document.addEventListener("change", (e)=>{
+  if(e.target && (e.target.id === "cmp" || e.target.id === "decision")) onContextSelected();
+
+  // diagnostics toggles
+  if(e.target && e.target.id === "inputsAvail"){ toggleAssumptionBlocks(); updateTrackingSummary(); }
+  if(e.target && e.target.id === "calStatus"){ toggleCalibrationDetails(); updateTrackingSummary(); }
+  if(e.target && e.target.id === "localSpfAvail"){ toggleLocalSpfBlock(); updateTrackingSummary(); }
+  if(e.target && ["metricClarity","docFeasible"].includes(e.target.id)){ updateTrackingSummary(); }
+});
+
+// Evaluate regimes only after inputs enabled
+document.addEventListener("input", (e)=>{
+  if(currentRegimes.length && inputEnabled && ["maj","min","lt","calA","calB"].includes(e.target.id)){
+    evaluateRegimes();
+  }
+  if(["assumpText","dataLimits","calDetails","localSpfNotes"].includes(e.target.id)){
+    updateTrackingSummary();
+  }
+});
+
+btnInputs.addEventListener("click", ()=>{
+  inputEnabled = true;
+  show("inputPanel");
+  btnDiag.disabled = false;
+  unlockDiagnostics();
+  // first evaluation (even if empty)
+  evaluateRegimes();
+});
+
+btnDiag.addEventListener("click", ()=>{
+  showTab("diag");
+  updateTrackingSummary();
+});
+
+function unlockDiagnostics(){
+  tabDiag.disabled = false;
+  tabDiag.classList.remove("locked");
+  tabDiag.title = "";
+}
+
+// Reset lock on new context selection
+function lockDiagnostics(){
+  tabDiag.disabled = true;
+  tabDiag.classList.add("locked");
+  tabDiag.title = "Complete input step first";
+  btnDiag.disabled = true;
+}
+
+function onContextSelected(){
+  const cmp = val("cmp");
+  const decision = val("decision");
+
+  inputEnabled = false;
+  hide("inputPanel");
+  hideMsg();
+  lockDiagnostics();
+
+  if(!cmp || !decision){
+    hide("trendBox"); hide("regimePanel");
+    currentRegimes = [];
+    btnInputs.disabled = true;
+    return;
+  }
+
+  show("trendBox");
+  el("trendBox").textContent = trendText[decision] || "";
+
+  currentRegimes = getRegimesForComparison(cmp);
+  renderRegimeCards(currentRegimes);
+  show("regimePanel");
+
+  btnInputs.disabled = false;
+}
+
+function renderRegimeCards(regimes){
+  const list = el("regimeList");
+  list.innerHTML = "";
+  regimes.forEach(r=>{
+    const card = document.createElement("div");
+    card.className = "regime inactive";
+    card.id = `card_${r.id}`;
+    card.innerHTML = `
+      <h4>${r.id}: ${r.title}</h4>
+      <div><span class="trigger">${r.ruleText}</span></div>
+      <p><b>Status:</b> <span id="status_${r.id}">Not evaluated (enter inputs)</span></p>
+      <p><b>Why it matters:</b> ${r.why}</p>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function evaluateRegimes(){
+  const d = readInputs();
+  let triggeredIds = [];
+
+  currentRegimes.forEach(r=>{
+    const card = el(`card_${r.id}`);
+    const status = el(`status_${r.id}`);
+    if(!card || !status) return;
+
+    if(!hasAnyInputs(d)){
+      card.className = "regime inactive";
+      status.textContent = "Not evaluated (enter inputs)";
+      return;
+    }
+
+    const triggered = r.check(d);
+    if(triggered){
+      triggeredIds.push(r.id);
+      card.className = "regime active";
+      status.textContent = `Triggered: ${explainMatch(r.id, d)}`;
+    } else {
+      card.className = "regime inactive";
+      status.textContent = "Not triggered by your inputs";
+    }
+  });
+
+  // Show the message once inputs exist
+  if(hasAnyInputs(d)){
+    showMsg(triggeredIds);
+  }
+
+  updateTrackingSummary();
+}
+
+function showMsg(triggeredIds){
+  caseMsg.classList.remove("hidden");
+  const list = triggeredIds.length ? triggeredIds.join(", ") : "None";
+  caseMsg.innerHTML =
+    `<b>For your specific case</b>, the <b>red-highlighted</b> regimes are triggered (IDs: <b>${list}</b>). 
+     Next: go to the <b>Diagnostic checks</b> tab to record assumptions, calibration status, local SPF availability, and documentation.`;
+}
+function hideMsg(){
+  caseMsg.classList.add("hidden");
+  caseMsg.textContent = "";
+}
+
+// -------------------- Matching explanations --------------------
+function explainMatch(regimeId, d){
+  if(regimeId === "R1") return `Major AADT=${d.maj}`;
+  if(regimeId === "R2") return `Major=${d.maj}, Minor=${d.min}`;
+  if(regimeId === "R3") return `Major=${d.maj}, LT lanes=${d.lt}`;
+  if(regimeId === "R4") return `CalA=${fmt(d.calA)}, CalB=${fmt(d.calB)}, diff=${fmt(Math.abs(d.calA-d.calB))}`;
+  if(regimeId === "R5") return `Major=${d.maj}, LT=${d.lt}, maxCal=${fmt(maxFinite(d.calA,d.calB))}`;
+  return "Inputs satisfy trigger condition";
+}
+
+// ---------------- Diagnostics blocks ----------------
+function toggleAssumptionBlocks(){
+  const v = val("inputsAvail");
+  if(v === "partial" || v === "no") show("assumpBlock");
+  else hide("assumpBlock");
+}
+function toggleCalibrationDetails(){
+  const v = val("calStatus");
+  if(v === "mixed" || v === "outdated") show("calDetailBlock");
+  else hide("calDetailBlock");
+}
+function toggleLocalSpfBlock(){
+  const v = val("localSpfAvail");
+  if(v === "yes") show("localSpfBlock");
+  else hide("localSpfBlock");
+}
+
+// ---------------- Tracking summary ----------------
+function updateTrackingSummary(){
+  const cmp = val("cmp");
+  const decision = val("decision");
+  const d = readInputs();
+  const triggered = (currentRegimes || []).filter(r => inputEnabled && r.check(d)).map(r => r.id);
+
+  const inputsAvail = val("inputsAvail");
+  const calStatus = val("calStatus");
+  const localSpfAvail = val("localSpfAvail");
+  const metricClarity = val("metricClarity");
+  const docFeasible = val("docFeasible");
+
+  const pieces = [];
+  if(cmp && decision){
+    pieces.push(`Context: ${cmpLabel(cmp)}; decision emphasis: ${decisionLabel(decision)}.`);
+  }
+  if(inputEnabled && hasAnyInputs(d)){
+    pieces.push(`Inputs: Major=${fmtInt(d.maj)}, Minor=${fmtInt(d.min)}, LT=${d.lt}, CalA=${fmt(d.calA)}, CalB=${fmt(d.calB)}.`);
+    pieces.push(`Triggered regimes: ${triggered.length ? triggered.join(", ") : "None"}.`);
+  } else {
+    pieces.push("Triggered regimes: (not evaluated — enter inputs on the Main tab).");
+  }
+
+  pieces.push(`Key inputs availability: ${inputsAvailLabel(inputsAvail)}.`);
+  if(inputsAvail !== "yes"){
+    const a = el("assumpText").value?.trim();
+    const l = el("dataLimits").value?.trim();
+    if(a) pieces.push(`Assumptions/proxies: ${a}`);
+    if(l) pieces.push(`Data limitations: ${l}`);
+  }
+
+  pieces.push(`Calibration status: ${calStatusLabel(calStatus)}.`);
+  if(calStatus === "mixed" || calStatus === "outdated"){
+    const cd = el("calDetails").value?.trim();
+    if(cd) pieces.push(`Calibration notes: ${cd}`);
+  }
+
+  pieces.push(`Local SPFs / hybrid methods: ${localSpfLabel(localSpfAvail)}.`);
+  if(localSpfAvail === "yes"){
+    const ln = el("localSpfNotes").value?.trim();
+    if(ln) pieces.push(`Local SPF notes: ${ln}`);
+  }
+
+  pieces.push(`Decision metric clarity: ${metricClarity === "clear" ? "Clear" : "Unclear / needs resolution"}.`);
+  pieces.push(`Documentation feasibility: ${docFeasible === "yes" ? "Feasible" : "Not feasible / limited"}.`);
+
+  el("trackSummary").textContent = pieces.join(" ");
+}
+
+// ---------------- Input helpers ----------------
+function readInputs(){
+  return {
+    maj: toNum(val("maj")),
+    min: toNum(val("min")),
+    lt: Number(val("lt")),
+    calA: toNum(val("calA")),
+    calB: toNum(val("calB"))
+  };
+}
+function hasAnyInputs(d){
+  return isFiniteNum(d.maj) || isFiniteNum(d.min) || isFiniteNum(d.calA) || isFiniteNum(d.calB) || (d.lt !== 0);
+}
+function toNum(v){
+  if(v === "" || v === null || v === undefined) return NaN;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+function isFiniteNum(x){ return Number.isFinite(x); }
+function maxFinite(a,b){
+  const A = Number.isFinite(a) ? a : NaN;
+  const B = Number.isFinite(b) ? b : NaN;
+  if(Number.isFinite(A) && Number.isFinite(B)) return Math.max(A,B);
+  if(Number.isFinite(A)) return A;
+  if(Number.isFinite(B)) return B;
+  return NaN;
+}
+function fmt(n){
+  if(!Number.isFinite(n)) return "—";
+  return (Math.round(n*100)/100).toFixed(2);
+}
+function fmtInt(n){
+  if(!Number.isFinite(n)) return "—";
+  return String(Math.round(n));
+}
+
+// DOM helpers
+function el(id){ return document.getElementById(id); }
+function val(id){ return document.getElementById(id).value; }
+function show(id){ el(id).classList.remove("hidden"); }
+function hide(id){ el(id).classList.add("hidden"); }
+
+// labels
+function cmpLabel(c){ return { "3st_3sg":"3ST vs 3SG (stop-controlled vs signalized)" }[c] || c; }
+function decisionLabel(d){ return { total:"Planning (Total)", severity:"Severity (FI)", mixed:"Both Total + FI" }[d] || d; }
+function inputsAvailLabel(v){ return { yes:"All key inputs available", partial:"Some inputs assumed/proxied", no:"Major inputs missing" }[v] || v; }
+function calStatusLabel(v){
+  return {
+    current:"Current & applicable (consistent)",
+    mixed:"Mixed/partial coverage or inconsistent basis",
+    outdated:"Outdated / uncertain applicability",
+    none:"Not available / not used"
+  }[v] || v;
+}
+function localSpfLabel(v){ return { unknown:"Unknown / not assessed", yes:"Available", no:"Not available" }[v] || v; }
+
+// init hidden blocks
+toggleAssumptionBlocks();
+toggleCalibrationDetails();
+toggleLocalSpfBlock();
+</script>
+
+</body>
+</html>
